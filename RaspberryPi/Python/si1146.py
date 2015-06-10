@@ -82,7 +82,7 @@ def init():
     exit()
 
 def combineValues(MSB,LSB):
-  value = (MSB << 7 ) + LSB
+  value = (MSB << 8 ) + LSB
   return value
 
 def setReg(reg , data):
@@ -100,7 +100,7 @@ def getStatus():
   SLEEP   = 0b00000001
   status = bus.read_byte_data(SI1146ADDR, CHIP_STAT)
   chip.running =  (status & RUNNING)
-  return ( (status & RUNNING) , (status & SUSPEND) ,(status&SLEEP))
+  return ( (status & RUNNING)/RUNNING  , (status & SUSPEND)/SUSPEND ,(status&SLEEP)/SLEEP)
 
 
 def sendReset(delay):
@@ -117,12 +117,23 @@ def sendCommand(command):
   print('OK')
   return  
 
-def setParam(param,data):
+def setParam(param,data):  
+  while (getResponse() > 0):
+    bus.write_byte_data(SI1146ADDR, COMMAND, 0x00)
+    sleep(0.1)
+
   setReg(PARAM_WR,data)
-  bus.write_byte_data(SI1146ADDR, COMMAND,(COM_PARAM_SET+param))
+  sleep(0.2)
+  print(COM_PARAM_SET|param)
+  bus.write_byte_data(SI1146ADDR, COMMAND,(COM_PARAM_SET|param))
   if (getReg(PARAM_RD)==data):
+    print(getReg(PARAM_RD),data,COM_PARAM_SET | param)
     print('PARAM OK')
-  return
+    return
+  print(getReg(PARAM_RD),data,COM_PARAM_SET+param,getResponse())
+ # dumpRam()
+
+  #exit()
 
 def getResponse():
   response = bus.read_byte_data(SI1146ADDR,RESPONSE)
@@ -132,31 +143,52 @@ def setRunning():
   bus.write_byte_data(SI1146ADDR, HW_KEY , COM_HW_KEY)
   return
 
-def readSensor(reg ):
-  lsb = getReg(PS1_DATA0)
-  msb = getReg(PS1_DATA1)
+def readSensor( sensor):
+  lsb = getReg(sensor-1)
+  msb = getReg(sensor)
   data = combineValues(msb,lsb)
   return data
 
 def dumpRam(): 
-  for location in range(10):
+  for location in range(0,20):
     sendCommand(COM_PARAM_QUERY+location)
     data = getReg(PARAM_RD)
     print (location ,' = ' ,data)
 
+
+def sysKey(key):
+  setReg(HW_KEY, key)
+  return 
 
 
 
 
 init()
 sendReset(0.5)
+
+sysKey(0x17)
+
 print(getStatus())
 
-sendCommand(COM_PS_AUTO)
+
+setParam(0x01, 0xF7)
+
+
 print(getResponse(), ' Commands Sent')
-setParam(0x01, 0b00010000)
-setReg(MEAS_RATE0, 0x01)
-sendCommand(COM_PS_AUTO)
+
+setParam(0x05, 0b0001000)
+#setParam(0x05, 0b0001000)
+sleep(0.1)
+setReg(MEAS_RATE0, 0xFF)
+setReg(MEAS_RATE1, 0x03)
+setReg(PS_LED21, 0xFF)
+#setReg(PS_LED3,0x03)
+
+#setParam(1, 0b00000000)
+setParam(2, 0b00000111)
+
+sendCommand(COM_PSALS_AUTO)
+
 setRunning()
 print(getStatus())
 print(chip.running)
@@ -164,6 +196,8 @@ print(chip.running)
 dumpRam()
 
 while 1: 
-  print (readSensor(0))
+  print (readSensor(PS2_DATA1),readSensor(PS1_DATA1),readSensor(ALS_VIS_DATA1))
+  print (getResponse())
+  print(getStatus())  
   sleep(0.1)
 
