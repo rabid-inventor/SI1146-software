@@ -6,8 +6,17 @@ SI1146ADDR = 0x60 #Devices Default i2c address
 PART_ID = 		0x00
 REV_ID = 		0x01
 SEQ_ID = 		0x02 
+
 INT_CFG = 		0x03
+INTCFG_INTOE =		0x01
+INTCFG_INTMODE =	0x02
+
 IRQ_ENABLE = 		0x04
+IRQEN_ALSEVERYSAMPLE =	0x01
+IRQEN_PS1EVERYSAMPLE =	0x04
+IRQEN_PS2EVERYSAMPLE =	0x08
+IRQEN_PS3EVERYSAMPLE =	0x10
+
 IRQ_MODE1 = 		0x05
 IRQ_MODE2 = 		0x06 
 HW_KEY = 		0x07
@@ -22,7 +31,12 @@ UCOEF3 = 		0x16
 PARAM_WR = 		0x17
 COMMAND =  		0x18 
 RESPONSE = 		0x20
+
 IRQ_STATUS =  		0x21 
+IRQSTAT_ALS = 		0x01
+
+
+
 
 #DATA REGISTERS this is where the sensor data is stored
 ALS_VIS_DATA0 = 	0x22
@@ -150,9 +164,12 @@ def combineValues(MSB,LSB):
   return value
 
 def setReg(reg , data):
-  bus.write_block_data(SI1146ADDR, reg, [data])
+  bus.write_byte_data(SI1146ADDR, reg, data)
+  sleep(0.1)
+
 
 def getReg(reg):
+  sleep(0.1)
   data = bus.read_byte_data(SI1146ADDR,reg)
   return data  
 
@@ -176,34 +193,43 @@ def sendReset(delay):
   setReg(IRQ_MODE2, 0)
   setReg(INT_CFG, 0)
   setReg(IRQ_STATUS,0xFF)
-  bus.write_byte_data(SI1146ADDR, COMMAND, COM_RESET)
+  sendCommand(COM_RESET)
   sleep(delay)
   sysKey(COM_HW_KEY)
   sleep(delay)
+  return
 
 def sendCommand(command):
-  while (getResponse() > 0):
-    bus.write_byte_data(SI1146ADDR, COMMAND, 0x00)
-    sleep(0.1)
-  while (getResponse() == 0):
-    bus.write_byte_data(SI1146ADDR, COMMAND, command)
-  print('OK')
+#  while (getResponse() > 0):
+  bus.write_byte_data(SI1146ADDR, COMMAND, 0x00)
+
+ # while (getResponse() == 0):
+  bus.write_byte_data(SI1146ADDR, COMMAND, command)
+
+  if (command == COM_RESET):
+    print('waiting for reset......')
+    sleep(0.5)
+
+    if (getResponse() ==0):
+      print('Device Resset!!')
+      return
+  print('COMMAND SEND')
   return  
 
 def setParam(param,data):  
-  while (getResponse() > 0):
-    bus.write_byte_data(SI1146ADDR, COMMAND, 0x00)
-    sleep(0.1)
 
-  setReg(PARAM_WR,data)
-  sleep(0.2)
-  print(COM_PARAM_SET|param)
-  bus.write_byte_data(SI1146ADDR, COMMAND,(COM_PARAM_SET|param))
-  if (getReg(PARAM_RD)==data):
-    print(getReg(PARAM_RD),data,COM_PARAM_SET | param)
-    print('PARAM OK')
-    return
-  print(getReg(PARAM_RD), data, COM_PARAM_SET|param , getResponse())
+  while (getReg(PARAM_RD) != data):
+    setReg(PARAM_WR,data)
+    print('wr data=',getReg(PARAM_WR))
+    print('WR data OK')   
+    sendCommand((param|COM_PARAM_SET))
+    sleep(0.2)
+    print( param ,' set to ',  getReg(PARAM_RD),'should be ', data)
+    if (getReg(PARAM_RD)==data):
+      print('PARAM OK')
+      return
+ 
+  print(getReg(PARAM_RD), data, (COM_PARAM_SET|param) , (param| COM_PARAM_SET))
  # dumpRam()
 
   #exit()
@@ -224,13 +250,15 @@ def readSensor( sensor):
 
 def dumpRam(): 
   for location in range(0,20):
-    sendCommand(COM_PARAM_QUERY+location)
+    sendCommand(COM_PARAM_QUERY|location)
+    sleep(0.05)
     data = getReg(PARAM_RD)
     print (location ,' = ' ,data)
 
 
 def sysKey(key):
   setReg(HW_KEY, key)
+  sleep(0.1)
   return 
 
 def si114xSetup():
@@ -239,27 +267,28 @@ def si114xSetup():
   setReg(UCOEF1, 0x89)
   setReg(UCOEF2, 0x02)
   setReg(UCOEF3, 0x00)
-
+  
+  setParam(PARAM_PSLED12SEL, PARAM_PSLED12SEL_PS1LED1);
   #enable UV sensor
-  setParam(PARAM_CHLIST, PARAM_CHLIST_ENUV | PARAM_CHLIST_ENALSIR | PARAM_CHLIST_ENALSVIS | PARAM_CHLIST_ENPS1)
+  setParam(PARAM_CHLIST, PARAM_CHLIST_EN_UV)
+  
   #enable interrupt on every sample
-  setReg(INT_CFG, INT_CFG_INTOE)  
-  setReg(IRQ_ENABLE, IRQ_EN_ALSEVERYSAMPLE);  
+  setReg(INT_CFG, INTCFG_INTOE)  
+  setReg(IRQ_ENABLE, IRQEN_ALSEVERYSAMPLE);  
 
 #/****************************** Prox Sense 1 */
 
 #  // program LED current
-  setReg(PSLED_21, 0x03)# // 20mA for LED 1 only
+  setReg(PS_LED21, 0x03)# // 20mA for LED 1 only
   setParam(PARAM_PS1ADCMUX,PARAM_ADCMUX_LARGEIR);
 
 #  // prox sensor #1 uses LED #1
-  setParam(PARAM_PSLED12SEL, PARAM_PSLED12SEL_PS1LED1);
 #  // fastest clocks, clock div 1
   setParam(PARAM_PSADCGAIN, 0);
 #  // take 511 clocks to measure
-  setParam(SI1145_PARAM_PSADCOUNTER, SI1145_PARAM_ADCCOUNTER_511CLK);
+  setParam(PARAM_PSADCOUNTER, PARAM_ADCCOUNTER_511CLK);
 #  // in prox mode, high range
-  setParam(PARAM_PSADCMISC, PARAM_PSADCMISC_RANGE | PARAM_PSADCMISC_PSMODE);
+  setParam(PARAM_PSADCMISC, (PARAM_PSADCMISC_RANGE | PARAM_PSADCMISC_PSMODE));
 
   setParam(PARAM_ALSIRADCMUX, PARAM_ADCMUX_SMALLIR);  
 #  // fastest clocks, clock div 1
@@ -282,48 +311,46 @@ def si114xSetup():
 #/************************/
 
   # measurement rate for auto
-  regSet(MEAS_RATE0, 0xFF); #// 255 * 31.25uS = 8ms
+  setReg(MEAS_RATE0, 0xFF); #// 255 * 31.25uS = 8ms
   
   # auto run
-  regSet(COMMAND, COM_PSALS_AUTO);
-
+  sendCommand(COM_PSALS_AUTO);
+  dumpRam()
     
 
 init()
 #sendReset(0.5)
-#sysKey(0x17)
-
+sysKey(0x17)
 si114xSetup()
 
-cemment = '''
-print(getStatus())
-setParam(0x01, 0xF7)
+#cemment = '''
+#print(getStatus())
+#setParam(0x01, 0xF7)
 
 
-print(getResponse(), ' Commands Sent')
+#print(getResponse(), ' Commands Sent')
 
-setParam(0x05, 0b0001000)
-setParam(0x05, 0b0001000)
-sleep(0.1)
-setReg(MEAS_RATE0, 0xFF)
+#setParam(0x05, 0b0001000)
+#setParam(0x05, 0b0001000)
+#sleep(0.1)
+#setReg(MEAS_RATE0, 0xFF)
 #setReg(MEAS_RATE1, 0x03)
-setReg(PS_LED21, 0xFF)
+#setReg(PS_LED21, 0xFF)
 #setReg(PS_LED3,0x03)
 
-setParam(1, 0b00000000)
-setParam(2, 0b00000111)
+#setParam(1, 0b00000000)
+#setParam(2, 0b00000111)
 
-sendCommand(COM_PSALS_AUTO)
+#sendCommand(COM_PSALS_AUTO)
 
-setRunning()
-print(getStatus())
-print(chip.running)
+#setRunning()
+#print(getStatus())
+#print(chip.running)
 
-dumpRam()
-'''
+#dumpRam()
 while 1: 
-  print (readSensor(PS2_DATA1),readSensor(PS1_DATA1),readSensor(ALS_VIS_DATA1))
-  print (getResponse())
-  print(getStatus())  
+  print (readSensor(AUX_DATA1_UVINDEX1),readSensor(PS1_DATA1),readSensor(ALS_VIS_DATA1))
+  #print (getResponse())
+  #print(getStatus())  
   sleep(0.1)
 
