@@ -1,5 +1,7 @@
 SI1146ADDR = 0x60 #Devices Default i2c address
+DEBUG_LEVEL = 0
 
+WELCOME_TEXT = ' This is the Pyhton Driver for the SI114x range of light and poximity sensors')
 
 #\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\
 #Registers
@@ -137,6 +139,12 @@ SI1146 = 		0b01000110
 SI1147 = 		0b01000111
 
 
+#Routine for handling debugging if rquired 
+def debugPrint(comment = ' DEBUG: ', data = 'No Data' , level = 0):
+  if(DEBUG_LEVEL == level):
+    print(comment + str(data))
+  return
+
 class chipStat():
   def __init__(self):
     self.running = 0 
@@ -150,23 +158,30 @@ chip = chipStat()
 import smbus
 from  time import sleep as sleep
 
+#Create instance of SMBus 
 bus = smbus.SMBus(1)
 
 def init():
   if (bus.read_byte_data(SI1146ADDR, PART_ID) == SI1146):
-    print((' SI1146 Detected on I2C BUS ' + str(bus)))
+    debugPrint(' SI1146 Detected on I2C BUS ' , bus , 1 )
   elif(): 
-    print(('SI1146 Not found on I2C BUS  '+ str(bus)))
+    debudPrint(' SI1146 Not found on I2C BUS  ', bus , 1 )
     exit()
+
+#Combines MSB and LSB regitster values 
 
 def combineValues(MSB,LSB):
   value = (MSB << 8 ) + LSB
   return value
 
+
+#Sets a registry 8bit  Value 
+
 def setReg(reg , data):
   bus.write_byte_data(SI1146ADDR, reg, data)
-  sleep(0.1)
+#  sleep(0.1)
 
+#Returns Registrys current value 
 
 def getReg(reg):
   sleep(0.1)
@@ -185,7 +200,7 @@ def getStatus():
 
 
 def sendReset(delay):
-  print('Resetting SI114X........')
+  debugPrint('Resetting SI114X........',delay,1)
   setReg(MEAS_RATE0, 0)
   setReg(MEAS_RATE1, 0)
   setReg(IRQ_ENABLE, 0)
@@ -200,10 +215,10 @@ def sendReset(delay):
   return
 
 def sendCommand(command):
-#  while (getResponse() > 0):
-  bus.write_byte_data(SI1146ADDR, COMMAND, 0x00)
+  while (getResponse() > 0):
+    bus.write_byte_data(SI1146ADDR, COMMAND, 0x00)
 
- # while (getResponse() == 0):
+#  while (getResponse() == 0):
   bus.write_byte_data(SI1146ADDR, COMMAND, command)
 
   if (command == COM_RESET):
@@ -220,13 +235,13 @@ def setParam(param,data):
 
   while (getReg(PARAM_RD) != data):
     setReg(PARAM_WR,data)
-    print('wr data=',getReg(PARAM_WR))
-    print('WR data OK')   
+   # print('wr data=',getReg(PARAM_WR))
+   # print('WR data OK')   
     sendCommand((param|COM_PARAM_SET))
-    sleep(0.2)
-    print( param ,' set to ',  getReg(PARAM_RD),'should be ', data)
+    #sleep(0.2)
+    #print( param ,' set to ',  getReg(PARAM_RD),'should be ', data)
     if (getReg(PARAM_RD)==data):
-      print('PARAM OK')
+      #print('PARAM OK')
       return
  
   print(getReg(PARAM_RD), data, (COM_PARAM_SET|param) , (param| COM_PARAM_SET))
@@ -242,18 +257,21 @@ def setRunning():
   bus.write_byte_data(SI1146ADDR, HW_KEY , COM_HW_KEY)
   return
 
+# Reads and returns Sensor data as a 16bit interger 
 def readSensor( sensor):
   lsb = getReg(sensor-1)
   msb = getReg(sensor)
   data = combineValues(msb,lsb)
   return data
 
-def dumpRam(): 
-  for location in range(0,20):
+#Dumps ram data
+
+def dumpRam(start = 0 , stop = 20): 
+  for location in range(start,stop):
     sendCommand(COM_PARAM_QUERY|location)
-    sleep(0.05)
+   # sleep(0.05)
     data = getReg(PARAM_RD)
-    print (location ,' = ' ,data)
+    print (str(location) + ' = ' + str(data))
 
 
 def sysKey(key):
@@ -270,7 +288,10 @@ def si114xSetup():
   
   setParam(PARAM_PSLED12SEL, PARAM_PSLED12SEL_PS1LED1);
   #enable UV sensor
-  setParam(PARAM_CHLIST, PARAM_CHLIST_EN_UV)
+  setParam(PARAM_CHLIST, PARAM_CHLIST_EN_UV
+                  | PARAM_CHLIST_EN_ALS_VIS
+                  | PARAM_CHLIST_EN_ALS_IR
+                  | PARAM_CHLIST_EN_PS1)
   
   #enable interrupt on every sample
   setReg(INT_CFG, INTCFG_INTOE)  
@@ -315,11 +336,13 @@ def si114xSetup():
   
   # auto run
   sendCommand(COM_PSALS_AUTO);
-  dumpRam()
+  
+  if(DEBUG_LEVEL >=3):
+    dumpRam()
     
 
 init()
-#sendReset(0.5)
+sendReset(0.4)
 sysKey(0x17)
 si114xSetup()
 
