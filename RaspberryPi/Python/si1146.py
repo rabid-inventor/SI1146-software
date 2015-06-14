@@ -1,7 +1,7 @@
 SI1146ADDR = 0x60 #Devices Default i2c address
 DEBUG_LEVEL = 0
 
-WELCOME_TEXT = ' This is the Pyhton Driver for the SI114x range of light and poximity sensors')
+WELCOME_TEXT = ' This is the Pyhton Driver for the SI114x range of light and poximity sensors'
 
 #\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\
 #Registers
